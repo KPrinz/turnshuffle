@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TurnShuffle — random standup order</title>
+  <meta name="description" content="Type a list of names, shuffle once, and give everyone a turn. Each name appears exactly once." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111'/%3E%3Cpath d='M8 11h10M18 7l4 4-4 4M24 21H14M14 17l-4 4 4 4' stroke='%23f4c430' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #171c24;
+      --line: #2a3240;
+      --text: #f4f1ea;
+      --muted: #9aa3b2;
+      --accent: #f4c430;
+      --accent-ink: #1a1404;
+      --good: #7dcea0;
+      --danger: #e07a6a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(900px 500px at 10% -10%, #243044 0%, transparent 55%),
+        radial-gradient(700px 400px at 110% 10%, #3a2e12 0%, transparent 50%),
+        var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    h1 {
+      font-size: 1.7rem;
+      letter-spacing: -0.03em;
+      margin: 0;
+    }
+    h1 span { color: var(--accent); }
+    .tag {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      resize: vertical;
+      background: #0e1116;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      font: 1rem/1.45 inherit;
+    }
+    textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 18px;
+      font: 600 0.95rem inherit;
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: var(--accent-ink); }
+    button.ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .stage {
+      margin-top: 18px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 28px 16px;
+    }
+    .eyebrow {
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .name {
+      font-size: clamp(2.4rem, 8vw, 5.2rem);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      margin: 0 0 12px;
+      word-break: break-word;
+    }
+    .meta { color: var(--muted); }
+    .done { color: var(--good); font-size: 1.4rem; }
+    ol.order {
+      width: min(520px, 100%);
+      margin: 18px auto 0;
+      padding: 0;
+      list-style: none;
+      text-align: left;
+    }
+    ol.order li {
+      display: flex;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+    }
+    ol.order li.current { color: var(--text); font-weight: 700; }
+    ol.order li.past { text-decoration: line-through; opacity: 0.55; }
+    ol.order li span.n {
+      width: 1.6rem;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    .hint { margin-top: 18px; color: var(--muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Turn<span>Shuffle</span></h1>
+      <div class="tag">One random order. Every name once.</div>
+    </header>
+
+    <section class="panel" id="setup">
+      <label for="names">Names, one per line</label>
+      <textarea id="names" placeholder="Ada&#10;Grace&#10;Linus&#10;Margaret"></textarea>
+      <div class="row">
+        <button class="primary" id="start">Shuffle and start</button>
+        <button class="ghost" id="clear">Clear</button>
+      </div>
+      <p class="hint">Names stay in this browser until you clear them. Nothing is sent to a server.</p>
+    </section>
+
+    <section class="panel stage" id="run" hidden>
+      <div class="eyebrow" id="eyebrow">Up now</div>
+      <h2 class="name" id="current">—</h2>
+      <div class="meta" id="progress"></div>
+      <div class="row">
+        <button class="primary" id="next">Next</button>
+        <button class="ghost" id="again">Reshuffle</button>
+        <button class="ghost" id="edit">Edit names</button>
+      </div>
+      <ol class="order" id="order"></ol>
+    </section>
+  </div>
+
+  <script>
+    const namesEl = document.getElementById("names");
+    const setup = document.getElementById("setup");
+    const run = document.getElementById("run");
+    const currentEl = document.getElementById("current");
+    const progressEl = document.getElementById("progress");
+    const orderEl = document.getElementById("order");
+    const eyebrow = document.getElementById("eyebrow");
+    const nextBtn = document.getElementById("next");
+
+    const KEY = "turnshuffle.names";
+    let queue = [];
+    let index = 0;
+
+    namesEl.value = localStorage.getItem(KEY) || "";
+
+    function parseNames(text) {
+      return text
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    function shuffle(list) {
+      const a = list.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function render() {
+      orderEl.innerHTML = "";
+      queue.forEach((name, i) => {
+        const li = document.createElement("li");
+        if (i < index) li.className = "past";
+        if (i === index) li.className = "current";
+        li.innerHTML = `<span class="n">${i + 1}</span><span></span>`;
+        li.lastChild.textContent = name;
+        orderEl.appendChild(li);
+      });
+
+      if (index >= queue.length) {
+        eyebrow.textContent = "Done";
+        currentEl.textContent = "Everyone had a turn";
+        currentEl.className = "name done";
+        progressEl.textContent = `${queue.length} of ${queue.length}`;
+        nextBtn.disabled = true;
+        return;
+      }
+      currentEl.className = "name";
+      eyebrow.textContent = "Up now";
+      currentEl.textContent = queue[index];
+      progressEl.textContent = `${index + 1} of ${queue.length}`;
+      nextBtn.disabled = false;
+    }
+
+    function begin() {
+      const names = parseNames(namesEl.value);
+      if (names.length === 0) {
+        namesEl.focus();
+        return;
+      }
+      localStorage.setItem(KEY, namesEl.value);
+      queue = shuffle(names);
+      index = 0;
+      setup.hidden = true;
+      run.hidden = false;
+      render();
+    }
+
+    document.getElementById("start").addEventListener("click", begin);
+    document.getElementById("again").addEventListener("click", begin);
+    document.getElementById("next").addEventListener("click", () => {
+      if (index < queue.length) index += 1;
+      render();
+    });
+    document.getElementById("edit").addEventListener("click", () => {
+      run.hidden = true;
+      setup.hidden = false;
+    });
+    document.getElementById("clear").addEventListener("click", () => {
+      namesEl.value = "";
+      localStorage.removeItem(KEY);
+      namesEl.focus();
+    });
+    namesEl.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") begin();
+    });
+  </script>
+</body>
+</html>
